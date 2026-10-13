@@ -76,3 +76,17 @@ def test_file_budget_goes_to_files_the_solution_wrote(tmp_path):
     mutants = plan(task, oracle, 1, 100, {STRONG, MEDIUM, WEAK}, skipped)
     assert mutants and {m.container_path for m in mutants} == {"/app/z_solution.py"}
     assert len(skipped) == 5
+
+
+def test_unchanged_code_can_be_kept_in_play(tmp_path):
+    (tmp_path / "environment" / "app").mkdir(parents=True)
+    out = tmp_path / "artifacts" / "app"
+    out.mkdir(parents=True)
+    for d in (tmp_path / "environment" / "app", out):
+        (d / "cli.py").write_text("def main(alert):\n    return 1 if alert else 0\n")
+        (d / "data.csv").write_text("a,b\n1,2\n")
+    task = Task(tmp_path, "t", [Artifact("/app/")], "separate", 60.0)
+    oracle = OracleRun(tmp_path, 1.0, [ExportedArtifact("/app/", out, True)])
+    assert plan(task, oracle, 10, 100, {STRONG, MEDIUM, WEAK}) == []
+    kept = plan(task, oracle, 10, 100, {STRONG, MEDIUM, WEAK}, keep_unchanged_code=True)
+    assert kept and {m.container_path for m in kept} == {"/app/cli.py"}

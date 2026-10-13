@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="for each accepted nudged number, widen the change until the verifier rejects it")
     r.add_argument("--exhaustive", action="store_true",
                    help="mutate every code site instead of three per operator (raise --max-mutants to match)")
+    r.add_argument("--include-unchanged-code", action="store_true",
+                   help="also mutate code files the reference solution left unchanged (the agent may edit them too)")
     r.add_argument("--compare", metavar="CMD",
                    help="command that runs the submitted program; each accepted mutant is re-run with it to see "
                         "whether its output differs from the reference (needs --compare-file)")
@@ -99,7 +101,8 @@ def _run(args) -> int:
             print("error: --compare and --compare-file go together", file=sys.stderr)
             return 2
         mutants = plan(task, oracle, args.max_files, args.max_mutants, severities, skipped,
-                       per_operator=10_000 if args.exhaustive else 3)
+                       per_operator=10_000 if args.exhaustive else 3,
+                       keep_unchanged_code=args.include_unchanged_code)
         for line in skipped:
             print(f"      skip {line}")
         if args.dry_run:

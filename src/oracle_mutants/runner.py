@@ -67,7 +67,8 @@ class Report:
 
 
 def candidate_files(art: ExportedArtifact, task_exclude: tuple[str, ...], max_files: int,
-                    skip_hashes: frozenset[str] = frozenset(), skipped: list[str] | None = None) -> list[tuple[str, Path]]:
+                    skip_hashes: frozenset[str] = frozenset(), skipped: list[str] | None = None,
+                    keep_unchanged_code: bool = False) -> list[tuple[str, Path]]:
     """(container path, host path) pairs to mutate inside one artifact. Files whose hash is in
     `skip_hashes` are dropped before the `max_files` cap so the budget goes to files the solution wrote."""
     if not art.is_dir:
@@ -87,7 +88,8 @@ def candidate_files(art: ExportedArtifact, task_exclude: tuple[str, ...], max_fi
             if host.is_symlink() or host.stat().st_size > MAX_FILE_BYTES or host.stat().st_size == 0:
                 continue
             container_path = art.source.rstrip("/") + "/" + rel
-            if _sha(host) in skip_hashes:
+            unchanged_code = keep_unchanged_code and kind_of(container_path, host.read_bytes()[:8192]) == "code"
+            if _sha(host) in skip_hashes and not unchanged_code:
                 _note(skipped, container_path)
                 continue
             files.append((container_path, host))
@@ -117,12 +119,15 @@ def shipped_input_hashes(task: Task) -> set[str]:
 
 
 def plan(task: Task, oracle: OracleRun, max_files: int, max_mutants: int, severities: set[str],
-         skipped: list[str] | None = None, per_operator: int = 3) -> list[Mutant]:
+         skipped: list[str] | None = None, per_operator: int = 3, keep_unchanged_code: bool = False) -> list[Mutant]:
+    """`keep_unchanged_code`: in a code task the agent may edit any file it is given, so a code file the
+    reference left untouched is still part of the answer. Off by default because it multiplies mutants."""
     excludes = {a.source: a.exclude for a in task.artifacts}
     inputs = frozenset(shipped_input_hashes(task))
     mutants: list[Mutant] = []
     for art in oracle.artifacts:
-        for container_path, host in candidate_files(art, excludes.get(art.source, ()), max_files, inputs, skipped):
+        for container_path, host in candidate_files(art, excludes.get(art.source, ()), max_files, inputs, skipped,
+                                                    keep_unchanged_code):
             data = host.read_bytes()
             for v in mutate(container_path, data, per_operator):
                 if v.severity in severities:
