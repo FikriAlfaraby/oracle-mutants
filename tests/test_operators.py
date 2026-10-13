@@ -127,3 +127,13 @@ def test_nudge_skips_a_markup_header_when_a_real_value_follows():
     xml = b"<?xml version='1.0' encoding='utf-8'?>\n<score version=\"3.1\">\n<octave>4</octave>\n</score>\n"
     nudged = by_op(mutate("/app/score.musicxml", xml), "nudge-number")[0].data
     assert b"<octave>5</octave>" in nudged and b"version='1.0'" in nudged
+
+
+def test_json_identifier_fields_are_labels_not_values():
+    doc = b'{"clusters": [{"cluster_id": 1, "records": [{"id": 7}]}, {"cluster_id": 2, "score": 0.5}]}'
+    vs = mutate("/app/out/c.json", doc)
+    zeroed = by_op(vs, "numbers-to-zero")[0].data
+    assert b'"cluster_id": 1' in zeroed and b'"id": 7' in zeroed and b'"score": 0' in zeroed
+    assert by_op(vs, "nudge-number")[0].description.startswith("['clusters'][1]['score']")
+    only_ids = mutate("/app/out/c.json", b'{"clusters": [{"cluster_id": 1}, {"cluster_id": 2}]}')
+    assert not by_op(only_ids, "numbers-to-zero") and not by_op(only_ids, "nudge-number")

@@ -205,9 +205,12 @@ def _json_variants(data: bytes) -> list[Variant]:
                            dump(_set(doc, path, lst[: len(lst) // 2]))))
         out.append(Variant("duplicate-record", MEDIUM, f"duplicated the first element of {_fmt(path)}",
                            dump(_set(doc, path, [lst[0]] + lst))))
-    leaves = list(_numeric_leaves(doc))
+    # Numbers under identifier keys ("id", "cluster_id", "userId") are labels, not values.
+    leaves = [(p, v) for p, v in _numeric_leaves(doc) if not _is_id_path(p)]
     if leaves:
-        out.append(Variant("numbers-to-zero", STRONG, f"set all {len(leaves)} numeric values to 0", dump(_map_numbers(doc, lambda v: 0))))
+        keep = {p for p, _ in leaves}
+        out.append(Variant("numbers-to-zero", STRONG, f"set all {len(leaves)} numeric values to 0",
+                           dump(_map_numbers(doc, lambda v: 0, keep))))
         p, v = leaves[0]
         new = v + 1 if isinstance(v, int) else (v * 1.5 if v != 0 else 1.0)
 
@@ -248,16 +251,22 @@ def _numeric_leaves(doc, path=()):
             yield from _numeric_leaves(v, path + (i,))
 
 
-def _map_numbers(doc, fn):
+def _map_numbers(doc, fn, keep=None, path=()):
+    """Apply `fn` to numeric leaves; when `keep` is given, only to leaves whose path is in it."""
     if isinstance(doc, bool):
         return doc
     if isinstance(doc, (int, float)):
-        return fn(doc)
+        return fn(doc) if keep is None or path in keep else doc
     if isinstance(doc, dict):
-        return {k: _map_numbers(v, fn) for k, v in doc.items()}
+        return {k: _map_numbers(v, fn, keep, path + (k,)) for k, v in doc.items()}
     if isinstance(doc, list):
-        return [_map_numbers(v, fn) for v in doc]
+        return [_map_numbers(v, fn, keep, path + (i,)) for i, v in enumerate(doc)]
     return doc
+
+
+def _is_id_path(path) -> bool:
+    last = next((p for p in reversed(path) if isinstance(p, str)), None)
+    return last is not None and bool(re.search(r"(?:^|_)id$|[a-z]Id$|ID$", last))
 
 
 def _set(doc, path, value):
