@@ -44,3 +44,16 @@ Predicted in reach: 7 (one of them partly). Out of reach by design: 7.
 For each task: every accepted mutant, matched to a finding above or marked as not in the audit.
 Unmatched survivors are triaged by reading the verifier; anything that holds up is a new finding and
 will be reported upstream only after the task owner's rules are checked.
+
+## Changes between the freeze and the run
+
+Made after the freeze, before any of the six tasks above had produced a result. None adds an
+operator; the prediction table is unchanged.
+
+1. Code operators now blank comments, strings and docstrings before choosing a site. Found on
+   `interleaved-vigenere` (not one of the six): three of its six accepted mutants were edits inside
+   docstrings ("mod 26" → "mod 27" in prose), which can never change behaviour.
+2. `--probe` (tolerance probe) was added. It is opt-in and only runs after the main result, so it
+   cannot change which mutants are accepted.
+
+The run uses tag `v0.2-recall-run`.
