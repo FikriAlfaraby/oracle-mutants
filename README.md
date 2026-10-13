@@ -59,7 +59,8 @@ A strong verifier rejects all of them. On Terminal-Bench's `foodstuff-beta-activ
 - **Recall against a published manual audit**
   ([terminal-bench#2150](https://github.com/harbor-framework/terminal-bench/issues/2150)), with
   predictions committed before the run ([pre-registration](docs/recall-preregistration.md)). The
-  blind run found none of the seven findings in reach; the improved version re-finds five of them
+  blind run found none of the seven findings in reach. The improved version re-finds five published
+  findings: four of the seven predicted in reach, plus one predicted out of reach
   ([results](docs/recall-results.md)). Full
   write-up: [Do benchmark verifiers reject wrong answers?](https://fikrialfaraby.com/notes/verifier-mutants/)
 
