@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Callable
 
+from . import pyast
+
 STRONG, MEDIUM, WEAK = "strong", "medium", "weak"
 
 TEXT_EXT = {".txt", ".csv", ".tsv", ".md", ".sql", ".yaml", ".yml", ".rq", ".xml", ".musicxml", ".log", ".ini", ".toml", ".html", ".tex"}
@@ -80,7 +82,9 @@ def mutate(path: str, data: bytes, max_per_operator: int = 3) -> list[Variant]:
     if kind == "json":
         out += _json_variants(data)
     elif kind == "code":
-        out += _code_variants(data.decode("utf-8"), max_per_operator, PurePosixPath(path).suffix.lower())
+        ext = PurePosixPath(path).suffix.lower()
+        python = _python_variants(data.decode("utf-8"), max_per_operator) if ext in {".py", ".sage"} else []
+        out += python or _code_variants(data.decode("utf-8"), max_per_operator, ext)
     elif kind == "text":
         out += _text_variants(path, data.decode("utf-8"))
     else:
@@ -392,6 +396,19 @@ def _code_variants(src: str, k: int, ext: str = "") -> list[Variant]:
         m = list(lines)
         m[i] = lines[i][: mt.start()] + b + lines[i][mt.end():]
         out.append(Variant("flip-boolean", MEDIUM, f"line {i + 1}: {mt.group(0)} -> {b}", "\n".join(m).encode("utf-8")))
+    return out
+
+
+def _python_variants(src: str, k: int) -> list[Variant]:
+    """Python goes through the syntax tree (see pyast). `k` caps the sites per operator, spread over the
+    file; pass a large `k` for exhaustive mutation."""
+    by_op: dict[str, list] = {}
+    for site in pyast.sites(src):
+        by_op.setdefault(site.operator, []).append(site)
+    out = []
+    for op_sites in by_op.values():
+        for site in _spread(op_sites, k):
+            out.append(Variant(site.operator, MEDIUM, site.description, pyast.apply(src, site).encode("utf-8")))
     return out
 
 

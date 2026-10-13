@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import difflib
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,12 +42,12 @@ def accepted_mutants(task: Task, oracle: OracleRun, report_json: Path, max_files
 
 
 def compare(task: Task, oracle: OracleRun, image: str, mutants: list[Mutant], command: str, fetch: str,
-            on_result=None) -> tuple[bytes, list[Behaviour]]:
+            on_result=None, workers: int = 4) -> tuple[bytes, list[Behaviour]]:
     reference = run_command(image, task, oracle.artifacts, None, command, fetch)
     if reference.output_file is None:
         raise ValueError(f"the reference run did not write {fetch}:\n{reference.output_tail}")
-    out = []
-    for m in mutants:
+
+    def one(m: Mutant) -> Behaviour:
         got = run_command(image, task, oracle.artifacts, {m.container_path: m.variant.data}, command, fetch).output_file
         if got is None:
             b = Behaviour(m, NO_OUTPUT, "")
@@ -56,10 +57,12 @@ def compare(task: Task, oracle: OracleRun, image: str, mutants: list[Mutant], co
             b = Behaviour(m, SAME_DATA, "")
         else:
             b = Behaviour(m, CHANGED, _diff(reference.output_file, got))
-        out.append(b)
         if on_result:
             on_result(b)
-    return reference.output_file, out
+        return b
+
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        return reference.output_file, list(pool.map(one, mutants))
 
 
 def _same_json(a: bytes, b: bytes) -> bool:

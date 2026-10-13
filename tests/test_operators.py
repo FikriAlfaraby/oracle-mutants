@@ -71,10 +71,10 @@ def test_invalid_json_falls_back_to_text():
 def test_code_mutants_skip_comments():
     src = b"# if x == 1: comment\ndef f(x):\n    if x == 10:\n        return True\n    return x < 3\n"
     vs = mutate("/app/f.py", src)
-    flips = by_op(vs, "flip-comparison")
+    flips = by_op(vs, "flip-comparison") + by_op(vs, "negate-comparison")
     assert flips and all(b"# if x == 1: comment" in v.data for v in flips)
-    assert any(b"if x != 10" in v.data for v in flips)
-    assert any(b"x <= 3" in v.data for v in flips)
+    assert any(b"if x != 10" in v.data for v in by_op(vs, "negate-comparison"))
+    assert any(b"x <= 3" in v.data for v in by_op(vs, "flip-comparison"))
     assert any(b"return False" in v.data for v in by_op(vs, "flip-boolean"))
     assert any(b"x == 11" in v.data for v in by_op(vs, "off-by-one-constant"))
 
@@ -110,7 +110,7 @@ def shift(c, k):
 '''
     vs = mutate("/app/cracker.py", src)
     lines = {v.description for v in vs if v.operator in ("flip-comparison", "off-by-one-constant")}
-    assert lines == {"line 4: '>' -> '>='", "line 4: 26 -> 27"}
+    assert lines == {"line 4: '>' -> '>='", "line 4: 26 -> 27", "line 4: 0 -> 1"}
 
 
 def test_code_masking_for_c_like_sources():

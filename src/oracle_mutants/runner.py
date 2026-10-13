@@ -47,6 +47,8 @@ class Outcome:
     mutant: Mutant
     result: VerifierResult
     probe: object | None = None  # probe.Probe, filled in by --probe
+    behaviour: str | None = None  # compare verdict, filled in by --compare
+    behaviour_diff: str = ""
 
     @property
     def survived(self) -> bool:
@@ -113,14 +115,14 @@ def shipped_input_hashes(task: Task) -> set[str]:
 
 
 def plan(task: Task, oracle: OracleRun, max_files: int, max_mutants: int, severities: set[str],
-         skipped: list[str] | None = None) -> list[Mutant]:
+         skipped: list[str] | None = None, per_operator: int = 3) -> list[Mutant]:
     excludes = {a.source: a.exclude for a in task.artifacts}
     inputs = frozenset(shipped_input_hashes(task))
     mutants: list[Mutant] = []
     for art in oracle.artifacts:
         for container_path, host in candidate_files(art, excludes.get(art.source, ()), max_files, inputs, skipped):
             data = host.read_bytes()
-            for v in mutate(container_path, data):
+            for v in mutate(container_path, data, per_operator):
                 if v.severity in severities:
                     mutants.append(Mutant(container_path, v, data))
     mutants.sort(key=lambda m: SEVERITY_ORDER[m.variant.severity])  # stable: keeps file order within a severity

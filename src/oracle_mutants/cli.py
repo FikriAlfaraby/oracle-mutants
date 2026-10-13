@@ -34,6 +34,12 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--dry-run", action="store_true", help="list the mutants without running anything in Docker")
     r.add_argument("--probe", action="store_true",
                    help="for each accepted nudged number, widen the change until the verifier rejects it")
+    r.add_argument("--exhaustive", action="store_true",
+                   help="mutate every code site instead of three per operator (raise --max-mutants to match)")
+    r.add_argument("--compare", metavar="CMD",
+                   help="command that runs the submitted program; each accepted mutant is re-run with it to see "
+                        "whether its output differs from the reference (needs --compare-file)")
+    r.add_argument("--compare-file", metavar="PATH", help="absolute path of the file --compare's command writes")
     s = sub.add_parser("summarize", help="combine the report.json files under a runs directory into one table")
     s.add_argument("runs", type=Path, help="directory containing <task>/report.json")
     c = sub.add_parser("compare", help="for code tasks: does each accepted mutant change what the program writes?")
@@ -89,7 +95,11 @@ def _run(args) -> int:
             print("error: the reference solution does not pass its own verifier; nothing to compare against", file=sys.stderr)
             return 3
         skipped: list[str] = []
-        mutants = plan(task, oracle, args.max_files, args.max_mutants, severities, skipped)
+        if bool(args.compare) != bool(args.compare_file):
+            print("error: --compare and --compare-file go together", file=sys.stderr)
+            return 2
+        mutants = plan(task, oracle, args.max_files, args.max_mutants, severities, skipped,
+                       per_operator=10_000 if args.exhaustive else 3)
         for line in skipped:
             print(f"      skip {line}")
         if args.dry_run:
@@ -117,12 +127,21 @@ def _run(args) -> int:
                 o.probe = probe(task, oracle, image, o)
                 if o.probe:
                     print(f"      probe {o.mutant.container_path}: {o.probe.summary()}", flush=True)
+        if args.compare:
+            accepted = [o for o in outcomes if o.survived]
+            print(f"      checking whether the {len(accepted)} accepted mutants change the program's output ...", flush=True)
+            _, behaviours = compare(task, oracle, image, [o.mutant for o in accepted], args.compare, args.compare_file,
+                                    workers=args.workers)
+            for o, b in zip(accepted, behaviours):
+                o.behaviour, o.behaviour_diff = b.verdict, b.diff
+                print(f"      {b.verdict:15} {o.mutant.container_path}  {o.mutant.variant.description}", flush=True)
         report = Report(task, oracle, baseline, outcomes, skipped)
         js, md = write(report, out)
         survivors = sum(o.survived for o in outcomes)
         print(f"\n{survivors} of {len(outcomes)} mutants accepted ({time.time() - t0:.0f}s). Report: {md}")
-        return 1 if any(o.survived and o.mutant.variant.severity == STRONG for o in outcomes) else 0
-    except (OracleError, VerifierError) as e:
+        missed = any(o.survived and o.behaviour == "output changed" for o in outcomes)
+        return 1 if missed or any(o.survived and o.mutant.variant.severity == STRONG for o in outcomes) else 0
+    except (OracleError, VerifierError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 

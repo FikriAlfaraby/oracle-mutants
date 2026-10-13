@@ -39,6 +39,8 @@ def to_dict(r: Report) -> dict:
                 "timed_out": o.result.timed_out,
                 "survived": o.survived,
                 "diff": o.mutant.diff() if o.survived else None,
+                "behaviour": o.behaviour,
+                "behaviour_diff": o.behaviour_diff or None,
                 "probe": ({"steps": [{"step": label, "reward": reward} for label, reward in o.probe.steps],
                            "summary": o.probe.summary()} if o.probe else None),
             }
@@ -64,6 +66,25 @@ def to_markdown(r: Report) -> str:
     ]
     if not survivors:
         lines.append("The verifier rejected every mutant. No gaps found by these operators.")
+    checked = [o for o in survivors if o.behaviour]
+    missed = [o for o in checked if o.behaviour == "output changed"]
+    if checked:
+        lines += [f"Behaviour check: {len(missed)} of {len(checked)} accepted mutants change the program's output. "
+                  "The rest write exactly the reference output (or the same JSON data), so there was nothing to catch.", ""]
+    if missed:
+        lines += ["## Output changed, verifier still gave full reward — likely gaps", ""]
+        for o in missed:
+            m = o.mutant
+            lines += [f"### `{m.container_path}` — {m.variant.operator}", "", m.variant.description, "",
+                      "```diff", m.diff(), "```", "", "What the program now writes:", "", "```diff", o.behaviour_diff, "```", ""]
+    if checked:
+        same = [o for o in checked if o.behaviour != "output changed"]
+        if same:
+            lines += ["## Accepted but behaviour unchanged (equivalent on this input)", ""]
+            lines += [f"- `{o.mutant.container_path}` {o.mutant.variant.operator}, {o.mutant.variant.description} — {o.behaviour}"
+                      for o in same]
+            lines.append("")
+        survivors = [o for o in survivors if not o.behaviour]
     for sev in (STRONG, MEDIUM, WEAK):
         group = [o for o in survivors if o.mutant.variant.severity == sev]
         if not group:
