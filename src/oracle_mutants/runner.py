@@ -61,9 +61,14 @@ class Report:
     skipped: list[str] = field(default_factory=list)
 
 
-def candidate_files(art: ExportedArtifact, task_exclude: tuple[str, ...], max_files: int) -> list[tuple[str, Path]]:
-    """(container path, host path) pairs to mutate inside one artifact."""
+def candidate_files(art: ExportedArtifact, task_exclude: tuple[str, ...], max_files: int,
+                    skip_hashes: frozenset[str] = frozenset(), skipped: list[str] | None = None) -> list[tuple[str, Path]]:
+    """(container path, host path) pairs to mutate inside one artifact. Files whose hash is in
+    `skip_hashes` are dropped before the `max_files` cap so the budget goes to files the solution wrote."""
     if not art.is_dir:
+        if _sha(art.host_path) in skip_hashes:
+            _note(skipped, art.source)
+            return []
         return [(art.source, art.host_path)]
     files = []
     base = art.host_path
@@ -76,9 +81,22 @@ def candidate_files(art: ExportedArtifact, task_exclude: tuple[str, ...], max_fi
                 continue
             if host.is_symlink() or host.stat().st_size > MAX_FILE_BYTES or host.stat().st_size == 0:
                 continue
-            files.append((art.source.rstrip("/") + "/" + rel, host))
+            container_path = art.source.rstrip("/") + "/" + rel
+            if _sha(host) in skip_hashes:
+                _note(skipped, container_path)
+                continue
+            files.append((container_path, host))
     files.sort(key=lambda f: (KIND_ORDER[kind_of(f[0], f[1].read_bytes()[:8192])], f[0]))
     return files[:max_files]
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _note(skipped: list[str] | None, container_path: str) -> None:
+    if skipped is not None:
+        skipped.append(f"{container_path}: identical to a file shipped in environment/ (an input, not an answer)")
 
 
 def shipped_input_hashes(task: Task) -> set[str]:
@@ -89,22 +107,18 @@ def shipped_input_hashes(task: Task) -> set[str]:
     if env.is_dir():
         for path in env.rglob("*"):
             if path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_FILE_BYTES:
-                hashes.add(hashlib.sha256(path.read_bytes()).hexdigest())
+                hashes.add(_sha(path))
     return hashes
 
 
 def plan(task: Task, oracle: OracleRun, max_files: int, max_mutants: int, severities: set[str],
          skipped: list[str] | None = None) -> list[Mutant]:
     excludes = {a.source: a.exclude for a in task.artifacts}
-    inputs = shipped_input_hashes(task)
+    inputs = frozenset(shipped_input_hashes(task))
     mutants: list[Mutant] = []
     for art in oracle.artifacts:
-        for container_path, host in candidate_files(art, excludes.get(art.source, ()), max_files):
+        for container_path, host in candidate_files(art, excludes.get(art.source, ()), max_files, inputs, skipped):
             data = host.read_bytes()
-            if hashlib.sha256(data).hexdigest() in inputs:
-                if skipped is not None:
-                    skipped.append(f"{container_path}: identical to a file shipped in environment/ (an input, not an answer)")
-                continue
             for v in mutate(container_path, data):
                 if v.severity in severities:
                     mutants.append(Mutant(container_path, v, data))

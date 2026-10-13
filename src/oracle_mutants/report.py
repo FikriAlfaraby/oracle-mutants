@@ -72,7 +72,10 @@ def to_markdown(r: Report) -> str:
             lines += [f"### `{m.container_path}` — {m.variant.operator}", "", m.variant.description, "",
                       "```diff", m.diff(), "```", ""]
     if r.skipped:
-        lines += ["## Skipped", ""] + [f"- {s}" for s in r.skipped]
+        shown = r.skipped[:20]
+        lines += ["## Skipped", ""] + [f"- {s}" for s in shown]
+        if len(r.skipped) > len(shown):
+            lines.append(f"- ... and {len(r.skipped) - len(shown)} more unchanged input files")
     lines += ["", "_A mutant is **accepted** when the verifier still awards full reward. Strong mutants are almost "
               "never correct answers; medium and weak ones need a human to judge whether the task allows them._"]
     return "\n".join(lines) + "\n"

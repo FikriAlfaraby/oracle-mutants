@@ -60,3 +60,19 @@ def test_plan_skips_untouched_inputs(tmp_path):
     mutants = plan(task, oracle, 10, 100, {STRONG, MEDIUM, WEAK}, skipped)
     assert {m.container_path for m in mutants} == {"/app/out/result.csv"}
     assert skipped and "portfolio.csv" in skipped[0]
+
+
+def test_file_budget_goes_to_files_the_solution_wrote(tmp_path):
+    (tmp_path / "environment" / "app").mkdir(parents=True)
+    out = tmp_path / "artifacts" / "app"
+    out.mkdir(parents=True)
+    for i in range(5):  # five untouched shipped files sort before the one the solution wrote
+        (tmp_path / "environment" / "app" / f"a{i}.json").write_text(f'{{"n": {i}}}')
+        (out / f"a{i}.json").write_text(f'{{"n": {i}}}')
+    (out / "z_solution.py").write_text("def f(x):\n    return x > 3\n")
+    task = Task(tmp_path, "t", [Artifact("/app/")], "separate", 60.0)
+    oracle = OracleRun(tmp_path, 1.0, [ExportedArtifact("/app/", out, True)])
+    skipped: list[str] = []
+    mutants = plan(task, oracle, 1, 100, {STRONG, MEDIUM, WEAK}, skipped)
+    assert mutants and {m.container_path for m in mutants} == {"/app/z_solution.py"}
+    assert len(skipped) == 5
