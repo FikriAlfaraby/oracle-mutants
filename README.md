@@ -48,6 +48,20 @@ The report shows each accepted mutant as a diff. In this case, setting every cou
 
 A strong verifier rejects all of them. On Terminal-Bench's `foodstuff-beta-activity`, all 8 mutants are rejected in about 3 seconds.
 
+## Results on Terminal-Bench (October 2026)
+
+- **A new verifier gap, reported upstream.** In `session-window-debug`, a merger that gives a merged
+  session the wrong end time scores 1.0 in Harbor (7/7 tests). Reported with a reproduction and a
+  fix: [terminal-bench#2243](https://github.com/harbor-framework/terminal-bench/issues/2243).
+- **Precision.** First pass: 15 tasks, 165 mutants, 36 accepted. Every accepted mutant was triaged by
+  reading the verifier; none was a gap. Each false-alarm category became a rule in the tool
+  ([triage notes](docs/triage-notes.md)).
+- **Recall against a published manual audit**
+  ([terminal-bench#2150](https://github.com/harbor-framework/terminal-bench/issues/2150)), with
+  predictions committed before the run ([pre-registration](docs/recall-preregistration.md)). The
+  blind run found none of the seven findings in reach; the improved version re-finds several. Full
+  write-up: [Do benchmark verifiers reject wrong answers?](https://fikrialfaraby.com/notes/verifier-mutants/)
+
 ## Install and run
 
 Needs Python 3.11+, Docker, and the Harbor CLI (`uv tool install harbor`).
@@ -61,6 +75,19 @@ oracle-mutants run path/to/task --oracle-job jobs/<job>/<trial>   # reuse an ear
 
 Useful flags: `--severity strong` (run only near-certain mutants), `--max-mutants 40`, `--max-files 6` (files sampled inside directory artifacts), `--workers 4`, `--probe` (measure how far an accepted number can move, see below).
 
+For tasks whose answer is code:
+
+```bash
+# every site, not three per operator; also mutate code the reference left unchanged
+oracle-mutants run path/to/task --exhaustive --include-unchanged-code --max-mutants 100000 \
+  --compare "python /app/dispatch.py --output /output/plan.json" --compare-file /output/plan.json
+```
+
+`--compare` reruns the program with each accepted mutant. A mutant that writes exactly the reference
+output (or the same JSON data) is equivalent and is set aside; one whose output changed and still got
+full reward is reported first, largest change first. `oracle-mutants compare` does the same after the
+fact for an earlier run.
+
 The exit code is `1` when a strong mutant survives, so it can gate CI for new task pull requests.
 
 ## Mutation operators
@@ -69,7 +96,8 @@ The exit code is `1` when a strong mutant survives, so it can gate CI for new ta
 |---|---|
 | Text / CSV / TSV | empty, keep first half of records, drop last record, duplicate a record, swap two records, zero every number, nudge one number (+1 or ×1.5), CRLF + BOM |
 | JSON | empty object/array, drop a top-level key, keep half of a list, duplicate a list element, zero every number, nudge one number, set a value to null |
-| Code (`.py`, `.ts`, `.c`, `.rs`, …) | empty file, flip a comparison (`==`↔`!=`, `<`↔`<=`), off-by-one integer constant, flip a boolean — never inside comments or strings |
+| Python | from the syntax tree: relational replacement (boundary and negation), condition → `True`/`False`, `+`↔`-` and `*`↔`/`, constant +1, flip a boolean, `min`↔`max` and `any`↔`all`. Never inside comments, strings or docstrings; rounding precision and JSON indent are left alone |
+| Other code (`.ts`, `.c`, `.rs`, …) | empty file, flip a comparison (`==`↔`!=`, `<`↔`<=`), off-by-one integer constant, flip a boolean, never inside comments or strings |
 | Binary | keep the first half of the bytes, invert 16 bytes in the middle |
 
 Each mutant has a **severity**:
