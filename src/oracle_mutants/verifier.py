@@ -32,7 +32,7 @@ class VerifierError(Exception):
 
 def build_image(task: Task) -> str:
     tag = f"oracle-mutants/{task.slug.lower()}:verifier"
-    proc = subprocess.run(["docker", "build", "-q", "-t", tag, str(task.tests_dir)], capture_output=True, text=True)
+    proc = subprocess.run(["docker", "build", "-q", "-t", tag, str(task.tests_dir)], capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise VerifierError(f"docker build of {task.tests_dir} failed:\n{proc.stderr[-3000:]}")
     return tag
@@ -73,7 +73,7 @@ def _run(image: str, task: Task, artifacts: list[ExportedArtifact], overrides: d
     name = f"om-{uuid.uuid4().hex[:12]}"
     env_args = [arg for k, v in task.verifier_env.items() for arg in ("-e", f"{k}={v}")]
     create = subprocess.run(["docker", "create", "--name", name, "-v", f"{logs}:/logs/verifier", *env_args, image, *argv],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, check=False)
     if create.returncode != 0:
         raise VerifierError(f"docker create failed: {create.stderr[-2000:]}")
     try:
@@ -84,24 +84,24 @@ def _run(image: str, task: Task, artifacts: list[ExportedArtifact], overrides: d
                 _cp(str(host), f"{name}:{art.source}")
         timed_out = False
         try:
-            run = subprocess.run(["docker", "start", "-a", name], capture_output=True, text=True, timeout=timeout + 30)
+            run = subprocess.run(["docker", "start", "-a", name], capture_output=True, text=True, timeout=timeout + 30, check=False)
             output = (run.stdout + run.stderr)[-4000:]
         except subprocess.TimeoutExpired as exc:
             timed_out = True
-            subprocess.run(["docker", "kill", name], capture_output=True)
+            subprocess.run(["docker", "kill", name], capture_output=True, check=False)
             output = (str(exc.stdout or "") + str(exc.stderr or ""))[-4000:]
         fetched = None
         if fetch:
             out = tmp / "fetched"
-            if subprocess.run(["docker", "cp", f"{name}:{fetch}", str(out)], capture_output=True).returncode == 0 and out.is_file():
+            if subprocess.run(["docker", "cp", f"{name}:{fetch}", str(out)], capture_output=True, check=False).returncode == 0 and out.is_file():
                 fetched = out.read_bytes()
         return timed_out, output, fetched
     finally:
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False)
 
 
 def _cp(src: str, dst: str) -> None:
-    proc = subprocess.run(["docker", "cp", src, dst], capture_output=True, text=True)
+    proc = subprocess.run(["docker", "cp", src, dst], capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise VerifierError(f"docker cp {src} {dst} failed: {proc.stderr.strip()}")
 

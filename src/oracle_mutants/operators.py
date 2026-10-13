@@ -16,9 +16,9 @@ import io
 import json
 import re
 import tokenize
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Callable
 
 from . import pyast
 

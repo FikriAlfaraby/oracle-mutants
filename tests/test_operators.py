@@ -26,7 +26,7 @@ def test_never_returns_the_original_and_never_duplicates():
 
 
 def test_text_records():
-    data = "Efficiency: 0.97\nVolumetric factor: 33.00\nGravimetric: 17\n".encode()
+    data = b"Efficiency: 0.97\nVolumetric factor: 33.00\nGravimetric: 17\n"
     vs = mutate("/app/results.txt", data)
     assert ("empty", STRONG) in ops(vs)
     assert ("truncate-half", STRONG) in ops(vs)

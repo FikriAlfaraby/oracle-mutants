@@ -70,12 +70,12 @@ def to_markdown(r: Report) -> str:
     checked = [o for o in survivors if o.behaviour]
     missed = sorted((o for o in checked if o.behaviour == "output changed"), key=lambda o: -o.behaviour_largest)
     if checked:
-        lines += [f"Behaviour check: {len(missed)} of {len(checked)} accepted mutants change the program's output. "
-                  "The rest write exactly the reference output (or the same JSON data), so there was nothing to catch.", ""]
+        lines += [(f"Behaviour check: {len(missed)} of {len(checked)} accepted mutants change the program's output. "
+                   "The rest write exactly the reference output (or the same JSON data), so there was nothing to catch."), ""]
     if missed:
         lines += ["## Output changed, verifier still gave full reward — likely gaps", "",
-                  "Largest change first. A change of a fraction of a percent is usually inside a tolerance; "
-                  "tens of percent is not.", ""]
+                  ("Largest change first. A change of a fraction of a percent is usually inside a tolerance; "
+                   "tens of percent is not."), ""]
         for o in missed:
             m = o.mutant
             lines += [f"### `{m.container_path}` — {m.variant.operator}", "", m.variant.description, "",
@@ -105,8 +105,8 @@ def to_markdown(r: Report) -> str:
         lines += ["## Skipped", ""] + [f"- {s}" for s in shown]
         if len(r.skipped) > len(shown):
             lines.append(f"- ... and {len(r.skipped) - len(shown)} more unchanged input files")
-    lines += ["", "_A mutant is **accepted** when the verifier still awards full reward. Strong mutants are almost "
-              "never correct answers; medium and weak ones need a human to judge whether the task allows them._"]
+    lines += ["", ("_A mutant is **accepted** when the verifier still awards full reward. Strong mutants are almost "
+                   "never correct answers; medium and weak ones need a human to judge whether the task allows them._")]
     return "\n".join(lines) + "\n"
 
 

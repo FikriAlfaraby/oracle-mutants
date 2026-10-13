@@ -35,7 +35,7 @@ def run_oracle(task: Task, jobs_dir: Path, harbor: str = "harbor") -> OracleRun:
     jobs_dir.mkdir(parents=True, exist_ok=True)
     before = set(jobs_dir.iterdir())
     proc = subprocess.run([harbor, "run", "-p", str(task.root), "-a", "oracle", "-o", str(jobs_dir)],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, check=False)
     new_jobs = sorted(set(jobs_dir.iterdir()) - before)
     if not new_jobs:
         raise OracleError(f"harbor produced no job directory.\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")

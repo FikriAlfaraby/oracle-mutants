@@ -23,7 +23,7 @@ Issues = "https://github.com/FikriAlfaraby/oracle-mutants/issues"
 oracle-mutants = "oracle_mutants.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff==0.17.0"]
 
 [build-system]
 requires = ["hatchling"]

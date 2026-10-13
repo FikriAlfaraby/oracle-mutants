@@ -8,9 +8,9 @@ import time
 from pathlib import Path
 
 from . import __version__
-from .operators import MEDIUM, STRONG, WEAK
 from .compare import accepted_mutants, compare
 from .compare import to_markdown as compare_markdown
+from .operators import MEDIUM, STRONG, WEAK
 from .oracle import OracleError, load_oracle_job, run_oracle
 from .probe import probe
 from .report import summarize, write
@@ -141,7 +141,7 @@ def _run(args) -> int:
                 print(f"      {b.verdict:15} {o.mutant.container_path}  {o.mutant.variant.description}"
                       + (f"  [{b.size}]" if b.size else ""), flush=True)
         report = Report(task, oracle, baseline, outcomes, skipped)
-        js, md = write(report, out)
+        _, md = write(report, out)
         survivors = sum(o.survived for o in outcomes)
         print(f"\n{survivors} of {len(outcomes)} mutants accepted ({time.time() - t0:.0f}s). Report: {md}")
         missed = any(o.survived and o.behaviour == "output changed" for o in outcomes)

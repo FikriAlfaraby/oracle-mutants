@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from oracle_mutants.operators import STRONG, MEDIUM, WEAK
+from oracle_mutants.operators import MEDIUM, STRONG, WEAK
 from oracle_mutants.oracle import ExportedArtifact, OracleRun
 from oracle_mutants.runner import candidate_files, plan
 from oracle_mutants.task import Artifact, Task
