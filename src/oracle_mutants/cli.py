@@ -9,6 +9,8 @@ from pathlib import Path
 
 from . import __version__
 from .operators import MEDIUM, STRONG, WEAK
+from .compare import accepted_mutants, compare
+from .compare import to_markdown as compare_markdown
 from .oracle import OracleError, load_oracle_job, run_oracle
 from .probe import probe
 from .report import summarize, write
@@ -34,11 +36,38 @@ def main(argv: list[str] | None = None) -> int:
                    help="for each accepted nudged number, widen the change until the verifier rejects it")
     s = sub.add_parser("summarize", help="combine the report.json files under a runs directory into one table")
     s.add_argument("runs", type=Path, help="directory containing <task>/report.json")
+    c = sub.add_parser("compare", help="for code tasks: does each accepted mutant change what the program writes?")
+    c.add_argument("task", type=Path)
+    c.add_argument("--oracle-job", type=Path, required=True, help="the Harbor oracle job/trial the run used")
+    c.add_argument("--report", type=Path, required=True, help="report.json of the earlier run")
+    c.add_argument("--cmd", dest="program", required=True, help="command that runs the submitted program (as in tests/test.sh)")
+    c.add_argument("--file", required=True, help="absolute path of the file the command writes")
+    c.add_argument("--max-files", type=int, default=6, help="must match the earlier run")
     args = p.parse_args(argv)
     if args.cmd == "summarize":
         print(summarize(args.runs))
         return 0
+    if args.cmd == "compare":
+        return _compare(args)
     return _run(args)
+
+
+def _compare(args) -> int:
+    try:
+        task = load_task(args.task)
+        oracle = load_oracle_job(args.oracle_job)
+        mutants = accepted_mutants(task, oracle, args.report, args.max_files)
+        print(f"checking {len(mutants)} accepted mutants of {task.name} by running: {args.program}", flush=True)
+        image = build_image(task)
+        _, results = compare(task, oracle, image, mutants, args.program, args.file,
+                             lambda b: print(f"      {b.verdict:15} {b.mutant.container_path}  {b.mutant.variant.description}", flush=True))
+    except (TaskError, OracleError, VerifierError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    out = args.report.parent / "behaviour.md"
+    out.write_text(compare_markdown(task, args.program, args.file, results))
+    print(f"Report: {out}")
+    return 0
 
 
 def _run(args) -> int:
