@@ -12,8 +12,10 @@ Severity says how sure we are that the variant is really wrong:
 
 from __future__ import annotations
 
+import io
 import json
 import re
+import tokenize
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Callable
@@ -78,7 +80,7 @@ def mutate(path: str, data: bytes, max_per_operator: int = 3) -> list[Variant]:
     if kind == "json":
         out += _json_variants(data)
     elif kind == "code":
-        out += _code_variants(data.decode("utf-8"), max_per_operator)
+        out += _code_variants(data.decode("utf-8"), max_per_operator, PurePosixPath(path).suffix.lower())
     elif kind == "text":
         out += _text_variants(path, data.decode("utf-8"))
     else:
@@ -285,11 +287,81 @@ def _spread(items: list, k: int) -> list:
     return [items[int(i * step)] for i in range(k)]
 
 
-def _code_variants(src: str, k: int) -> list[Variant]:
+# Languages where a single quote opens an ordinary string; elsewhere it is a char literal or a lifetime.
+SINGLE_QUOTE_STRINGS = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".rb", ".php", ".sh", ".bash", ".lua", ".r", ".jl", ".sage"}
+HASH_COMMENTS = {".py", ".rb", ".sh", ".bash", ".r", ".jl", ".sage"}
+CHAR_LITERAL = re.compile(r"'(?:\\.|[^\\'\n])'")
+
+
+def _mask(src: str, ext: str) -> str:
+    """`src` with every comment and string literal blanked to spaces (newlines kept), so operators only
+    ever touch code. Positions line up with `src`."""
+    if ext in {".py", ".sage"}:
+        masked = _mask_python(src)
+        if masked is not None:
+            return masked
+    out = list(src)
+    i, n = 0, len(src)
+
+    def blank(a: int, b: int) -> None:
+        for j in range(a, min(b, n)):
+            if out[j] != "\n":
+                out[j] = " "
+
+    while i < n:
+        c, two = src[i], src[i:i + 2]
+        if two == "//" or (c == "#" and ext in HASH_COMMENTS):
+            end = src.find("\n", i)
+            end = n if end < 0 else end
+            blank(i, end)
+            i = end
+        elif two == "/*":
+            end = src.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            blank(i, end)
+            i = end
+        elif c in "\"`" or (c == "'" and ext in SINGLE_QUOTE_STRINGS):
+            j = i + 1
+            while j < n and src[j] != c and (c == "`" or src[j] != "\n"):
+                j += 2 if src[j] == "\\" else 1
+            blank(i, j + 1)
+            i = j + 1
+        elif c == "'" and CHAR_LITERAL.match(src, i):
+            end = CHAR_LITERAL.match(src, i).end()
+            blank(i, end)
+            i = end
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _mask_python(src: str) -> str | None:
     lines = src.split("\n")
+    out = [list(line) for line in lines]
+    blanked = {tokenize.STRING, tokenize.COMMENT}
+    if hasattr(tokenize, "FSTRING_MIDDLE"):
+        blanked |= {tokenize.FSTRING_START, tokenize.FSTRING_MIDDLE, tokenize.FSTRING_END}
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            if tok.type not in blanked:
+                continue
+            (r0, c0), (r1, c1) = tok.start, tok.end
+            for r in range(r0 - 1, r1):
+                a = c0 if r == r0 - 1 else 0
+                b = c1 if r == r1 - 1 else len(out[r])
+                for j in range(a, min(b, len(out[r]))):
+                    out[r][j] = " "
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None
+    return "\n".join("".join(line) for line in out)
+
+
+def _code_variants(src: str, k: int, ext: str = "") -> list[Variant]:
+    lines = src.split("\n")
+    code = _mask(src, ext).split("\n")  # same shape as `lines`, comments and strings blanked
     out: list[Variant] = []
     sites = []
-    for i, line in enumerate(lines):
+    for i, line in enumerate(code):
         if _is_comment(line):
             continue
         for a, b in COMPARISONS:
@@ -301,13 +373,13 @@ def _code_variants(src: str, k: int) -> list[Variant]:
         m = list(lines)
         m[i] = lines[i][:j] + b + lines[i][j + len(a):]
         out.append(Variant("flip-comparison", MEDIUM, f"line {i + 1}: '{a.strip()}' -> '{b.strip()}'", "\n".join(m).encode("utf-8")))
-    sites = [(i, mt) for i, line in enumerate(lines) if not _is_comment(line) for mt in [INT_LITERAL.search(line)] if mt]
+    sites = [(i, mt) for i, line in enumerate(code) if not _is_comment(line) for mt in [INT_LITERAL.search(line)] if mt]
     for i, mt in _spread(sites, k):
         m = list(lines)
         m[i] = lines[i][: mt.start()] + str(int(mt.group(0)) + 1) + lines[i][mt.end():]
         out.append(Variant("off-by-one-constant", MEDIUM, f"line {i + 1}: {mt.group(0)} -> {int(mt.group(0)) + 1}", "\n".join(m).encode("utf-8")))
     sites = []
-    for i, line in enumerate(lines):
+    for i, line in enumerate(code):
         if _is_comment(line):
             continue
         for a, b in BOOLS:

@@ -100,3 +100,24 @@ def test_nudge_prefers_a_standalone_value_over_dates_and_ids():
 def test_nudge_keeps_zero_padding():
     nudged = by_op(mutate("/app/out/ids.txt", b"00007\n00008\n"), "nudge-number")[0].data
     assert nudged.startswith(b"00008\n")
+
+
+def test_code_operators_skip_docstrings_strings_and_comments():
+    src = b'''"""Shift letters (mod 26) when k < n."""
+LABEL = "x < y"  # 10 < 20
+def shift(c, k):
+    return (c + k) % 26 if k > 0 else c
+'''
+    vs = mutate("/app/cracker.py", src)
+    lines = {v.description for v in vs if v.operator in ("flip-comparison", "off-by-one-constant")}
+    assert lines == {"line 4: '>' -> '>='", "line 4: 26 -> 27"}
+
+
+def test_code_masking_for_c_like_sources():
+    src = b'''// limit < 10
+const char *s = "a < b"; char q = '<';
+/* 26 > 3 */ if (n < 26) return 1;
+'''
+    vs = mutate("/app/x.c", src)
+    descs = {v.description for v in vs if v.operator in ("flip-comparison", "off-by-one-constant")}
+    assert descs == {"line 3: '<' -> '<='", "line 3: 26 -> 27"}
