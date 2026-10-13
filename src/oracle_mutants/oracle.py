@@ -61,6 +61,9 @@ def load_oracle_job(job_dir: Path) -> OracleRun:
         host = trial / entry["destination"]
         exported.append(ExportedArtifact(entry["source"], host, entry.get("type") == "directory" or host.is_dir()))
     if not exported:
+        if reward < 1.0:
+            raise OracleError(f"the reference solution failed its own verifier (reward {reward}) and wrote no "
+                              f"artifacts; see {trial / 'agent'} and {trial / 'trial.log'}")
         raise OracleError(f"the oracle run in {trial} exported no artifacts")
     return OracleRun(trial, reward, exported)
 
