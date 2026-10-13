@@ -53,7 +53,10 @@ operator; the prediction table is unchanged.
 1. Code operators now blank comments, strings and docstrings before choosing a site. Found on
    `interleaved-vigenere` (not one of the six): three of its six accepted mutants were edits inside
    docstrings ("mod 26" → "mod 27" in prose), which can never change behaviour.
-2. `--probe` (tolerance probe) was added. It is opt-in and only runs after the main result, so it
+2. `nudge-number` now looks for a standalone value on every line before falling back to any number.
+   Found on `satb-audio-transcription` (not one of the six): it had nudged the version in the XML
+   declaration instead of a note value.
+3. `--probe` (tolerance probe) was added. It is opt-in and only runs after the main result, so it
    cannot change which mutants are accepted.
 
 The run uses tag `v0.2-recall-run`.
