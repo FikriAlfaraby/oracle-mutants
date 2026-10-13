@@ -44,3 +44,19 @@ def test_plan_orders_by_severity_and_caps(tmp_path):
     assert sev == sorted(sev, key=[STRONG, MEDIUM, WEAK].index)
     only_strong = plan(task, oracle, 10, 100, {STRONG})
     assert only_strong and all(m.variant.severity == STRONG for m in only_strong)
+
+
+def test_plan_skips_untouched_inputs(tmp_path):
+    (tmp_path / "environment" / "inputs").mkdir(parents=True)
+    (tmp_path / "environment" / "inputs" / "portfolio.csv").write_text("id,n\n1,10\n2,20\n")
+    out = tmp_path / "artifacts"
+    out.mkdir()
+    (out / "portfolio.csv").write_text("id,n\n1,10\n2,20\n")
+    (out / "result.csv").write_text("id,total\n1,30\n")
+    task = Task(tmp_path, "t", [Artifact("/app/inputs/portfolio.csv"), Artifact("/app/out/result.csv")], "separate", 60.0)
+    oracle = OracleRun(tmp_path, 1.0, [ExportedArtifact("/app/inputs/portfolio.csv", out / "portfolio.csv", False),
+                                       ExportedArtifact("/app/out/result.csv", out / "result.csv", False)])
+    skipped: list[str] = []
+    mutants = plan(task, oracle, 10, 100, {STRONG, MEDIUM, WEAK}, skipped)
+    assert {m.container_path for m in mutants} == {"/app/out/result.csv"}
+    assert skipped and "portfolio.csv" in skipped[0]

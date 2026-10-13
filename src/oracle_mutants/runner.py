@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -80,12 +81,30 @@ def candidate_files(art: ExportedArtifact, task_exclude: tuple[str, ...], max_fi
     return files[:max_files]
 
 
-def plan(task: Task, oracle: OracleRun, max_files: int, max_mutants: int, severities: set[str]) -> list[Mutant]:
+def shipped_input_hashes(task: Task) -> set[str]:
+    """Hashes of every file the task ships in environment/. An artifact identical to one of these
+    is an untouched input, not an answer, so mutating it says nothing about the verifier."""
+    hashes = set()
+    env = task.root / "environment"
+    if env.is_dir():
+        for path in env.rglob("*"):
+            if path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_FILE_BYTES:
+                hashes.add(hashlib.sha256(path.read_bytes()).hexdigest())
+    return hashes
+
+
+def plan(task: Task, oracle: OracleRun, max_files: int, max_mutants: int, severities: set[str],
+         skipped: list[str] | None = None) -> list[Mutant]:
     excludes = {a.source: a.exclude for a in task.artifacts}
+    inputs = shipped_input_hashes(task)
     mutants: list[Mutant] = []
     for art in oracle.artifacts:
         for container_path, host in candidate_files(art, excludes.get(art.source, ()), max_files):
             data = host.read_bytes()
+            if hashlib.sha256(data).hexdigest() in inputs:
+                if skipped is not None:
+                    skipped.append(f"{container_path}: identical to a file shipped in environment/ (an input, not an answer)")
+                continue
             for v in mutate(container_path, data):
                 if v.severity in severities:
                     mutants.append(Mutant(container_path, v, data))

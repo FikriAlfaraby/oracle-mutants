@@ -56,7 +56,10 @@ def _run(args) -> int:
         if oracle.reward < 1.0:
             print("error: the reference solution does not pass its own verifier; nothing to compare against", file=sys.stderr)
             return 3
-        mutants = plan(task, oracle, args.max_files, args.max_mutants, severities)
+        skipped: list[str] = []
+        mutants = plan(task, oracle, args.max_files, args.max_mutants, severities, skipped)
+        for line in skipped:
+            print(f"      skip {line}")
         if args.dry_run:
             for m in mutants:
                 print(f"{m.variant.severity:6} {m.variant.operator:20} {m.container_path}  {m.variant.description}")
@@ -77,7 +80,7 @@ def _run(args) -> int:
             print(f"      {mark:9} {o.mutant.variant.severity:6} {o.mutant.variant.operator:18} {o.mutant.container_path}", flush=True)
 
         outcomes = execute(task, oracle, image, mutants, args.workers, progress)
-        report = Report(task, oracle, baseline, outcomes)
+        report = Report(task, oracle, baseline, outcomes, skipped)
         js, md = write(report, out)
         survivors = sum(o.survived for o in outcomes)
         print(f"\n{survivors} of {len(outcomes)} mutants accepted ({time.time() - t0:.0f}s). Report: {md}")
