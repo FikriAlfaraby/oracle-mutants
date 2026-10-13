@@ -141,8 +141,9 @@ def _text_variants(path: str, text: str) -> list[Variant]:
             zeroed[i] = NUMBER.sub("0", zeroed[i])
         out.append(Variant("numbers-to-zero", STRONG, f"set all {len(body_numbers)} numbers in records to 0", join(zeroed)))
         # Nudge a standalone value when there is one; the first number on a line is often a date or an ID.
-        for i in data_idx:
-            m = FIELD_NUMBER.search(lines[i]) or NUMBER.search(lines[i])
+        hits = [(i, FIELD_NUMBER.search(lines[i])) for i in data_idx]
+        hits = [h for h in hits if h[1]] or [(i, NUMBER.search(lines[i])) for i in data_idx]
+        for i, m in hits:
             if m:
                 def rebuild(step: float, i=i, m=m) -> bytes:
                     nudged = list(lines)

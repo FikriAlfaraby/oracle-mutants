@@ -121,3 +121,9 @@ const char *s = "a < b"; char q = '<';
     vs = mutate("/app/x.c", src)
     descs = {v.description for v in vs if v.operator in ("flip-comparison", "off-by-one-constant")}
     assert descs == {"line 3: '<' -> '<='", "line 3: 26 -> 27"}
+
+
+def test_nudge_skips_a_markup_header_when_a_real_value_follows():
+    xml = b"<?xml version='1.0' encoding='utf-8'?>\n<score version=\"3.1\">\n<octave>4</octave>\n</score>\n"
+    nudged = by_op(mutate("/app/score.musicxml", xml), "nudge-number")[0].data
+    assert b"<octave>5</octave>" in nudged and b"version='1.0'" in nudged
