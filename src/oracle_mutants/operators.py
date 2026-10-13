@@ -121,10 +121,10 @@ def _text_variants(path: str, text: str) -> list[Variant]:
     if len(data_idx) >= 2:
         drop = set(data_idx[(len(data_idx) + 1) // 2:])
         out.append(Variant("truncate-half", STRONG, f"dropped the last {len(drop)} of {len(data_idx)} records",
-                           join([l for i, l in enumerate(lines) if i not in drop])))
+                           join([line for i, line in enumerate(lines) if i not in drop])))
         last = data_idx[-1]
         out.append(Variant("drop-last-record", MEDIUM, f"dropped record on line {last + 1}",
-                           join([l for i, l in enumerate(lines) if i != last])))
+                           join([line for i, line in enumerate(lines) if i != last])))
         a, b = data_idx[0], data_idx[1]
         if lines[a] != lines[b]:
             swapped = list(lines)

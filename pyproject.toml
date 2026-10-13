@@ -7,12 +7,23 @@ requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Fikri Alfaraby", email = "fikrialfaraby04@gmail.com" }]
 dependencies = []
+keywords = ["benchmarks", "evaluation", "mutation-testing", "verifiers", "terminal-bench", "harbor", "llm-agents"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+  "Topic :: Software Development :: Testing",
+  "Intended Audience :: Science/Research",
+]
+
+[project.urls]
+Repository = "https://github.com/FikriAlfaraby/oracle-mutants"
+Issues = "https://github.com/FikriAlfaraby/oracle-mutants/issues"
 
 [project.scripts]
 oracle-mutants = "oracle_mutants.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.6"]
 
 [build-system]
 requires = ["hatchling"]
@@ -20,6 +31,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oracle_mutants"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
