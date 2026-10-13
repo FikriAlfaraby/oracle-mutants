@@ -1,0 +1,46 @@
+from pathlib import Path
+
+from oracle_mutants.operators import STRONG, MEDIUM, WEAK
+from oracle_mutants.oracle import ExportedArtifact, OracleRun
+from oracle_mutants.runner import candidate_files, plan
+from oracle_mutants.task import Artifact, Task
+
+
+def make_tree(tmp: Path) -> Path:
+    root = tmp / "app"
+    (root / "node_modules" / "x").mkdir(parents=True)
+    (root / "node_modules" / "x" / "index.js").write_text("module.exports = 1 == 1\n")
+    (root / "src").mkdir()
+    (root / "src" / "main.py").write_text("def f(x):\n    return x == 2\n")
+    (root / "out.json").write_text('{"a": 1, "b": [1, 2, 3]}\n')
+    (root / "notes.txt").write_text("one 1\ntwo 2\n")
+    (root / "empty.txt").write_text("")
+    return root
+
+
+def test_candidate_files_skips_vendored_and_prefers_data(tmp_path):
+    root = make_tree(tmp_path)
+    files = candidate_files(ExportedArtifact("/app/", root, True), (), max_files=10)
+    paths = [p for p, _ in files]
+    assert "/app/node_modules/x/index.js" not in paths
+    assert "/app/empty.txt" not in paths
+    assert paths[0] == "/app/out.json"          # JSON before text before code
+    assert paths.index("/app/notes.txt") < paths.index("/app/src/main.py")
+
+
+def test_candidate_files_respects_exclude_and_cap(tmp_path):
+    root = make_tree(tmp_path)
+    files = candidate_files(ExportedArtifact("/app/", root, True), ("*.txt",), max_files=1)
+    assert [p for p, _ in files] == ["/app/out.json"]
+
+
+def test_plan_orders_by_severity_and_caps(tmp_path):
+    root = make_tree(tmp_path)
+    task = Task(tmp_path, "t", [Artifact("/app/")], "separate", 60.0)
+    oracle = OracleRun(tmp_path, 1.0, [ExportedArtifact("/app/", root, True)])
+    mutants = plan(task, oracle, max_files=10, max_mutants=5, severities={STRONG, MEDIUM, WEAK})
+    assert len(mutants) == 5
+    sev = [m.variant.severity for m in mutants]
+    assert sev == sorted(sev, key=[STRONG, MEDIUM, WEAK].index)
+    only_strong = plan(task, oracle, 10, 100, {STRONG})
+    assert only_strong and all(m.variant.severity == STRONG for m in only_strong)

@@ -76,3 +76,18 @@ def to_markdown(r: Report) -> str:
     lines += ["", "_A mutant is **accepted** when the verifier still awards full reward. Strong mutants are almost "
               "never correct answers; medium and weak ones need a human to judge whether the task allows them._"]
     return "\n".join(lines) + "\n"
+
+
+def summarize(runs: Path) -> str:
+    """Markdown table over every <task>/report.json below `runs`."""
+    rows = []
+    for path in sorted(runs.rglob("report.json")):
+        d = json.loads(path.read_text())
+        surv = [r for r in d["results"] if r["survived"]]
+        sev = Counter(r["severity"] for r in surv)
+        rows.append((d["task"], d["mutants"], len(surv), sev[STRONG], sev[MEDIUM], sev[WEAK],
+                     ", ".join(sorted({f"{r['operator']}" for r in surv if r["severity"] == STRONG})) or "-"))
+    head = ["| Task | Mutants | Accepted | Strong | Medium | Weak | Strong operators accepted |", "|---|---:|---:|---:|---:|---:|---|"]
+    body = [f"| {t} | {m} | {a} | {s} | {md} | {w} | {ops} |" for t, m, a, s, md, w, ops in rows]
+    total = f"\n{len(rows)} tasks, {sum(r[1] for r in rows)} mutants, {sum(r[2] for r in rows)} accepted ({sum(r[3] for r in rows)} strong)."
+    return "\n".join(head + body) + total
