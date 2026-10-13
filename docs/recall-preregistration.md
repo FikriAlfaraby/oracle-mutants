@@ -59,4 +59,8 @@ operator; the prediction table is unchanged.
 3. `--probe` (tolerance probe) was added. It is opt-in and only runs after the main result, so it
    cannot change which mutants are accepted.
 
+4. Added after the run, because I first forgot to list them: two commits that cannot change which
+   mutants are made. One turned the batch script's limits into settings with the same defaults; the
+   other gives a clearer error when a reference solution fails its own verifier.
+
 The run uses tag `v0.2-recall-run`.
