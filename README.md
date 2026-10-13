@@ -59,7 +59,7 @@ oracle-mutants run path/to/task --dry-run  # list the mutants only
 oracle-mutants run path/to/task --oracle-job jobs/<job>/<trial>   # reuse an earlier oracle run
 ```
 
-Useful flags: `--severity strong` (run only near-certain mutants), `--max-mutants 40`, `--max-files 6` (files sampled inside directory artifacts), `--workers 4`.
+Useful flags: `--severity strong` (run only near-certain mutants), `--max-mutants 40`, `--max-files 6` (files sampled inside directory artifacts), `--workers 4`, `--probe` (measure how far an accepted number can move, see below).
 
 The exit code is `1` when a strong mutant survives, so it can gate CI for new task pull requests.
 
@@ -69,7 +69,7 @@ The exit code is `1` when a strong mutant survives, so it can gate CI for new ta
 |---|---|
 | Text / CSV / TSV | empty, keep first half of records, drop last record, duplicate a record, swap two records, zero every number, nudge one number (+1 or ×1.5), CRLF + BOM |
 | JSON | empty object/array, drop a top-level key, keep half of a list, duplicate a list element, zero every number, nudge one number, set a value to null |
-| Code (`.py`, `.ts`, `.c`, `.rs`, …) | empty file, flip a comparison (`==`↔`!=`, `<`↔`<=`), off-by-one integer constant, flip a boolean |
+| Code (`.py`, `.ts`, `.c`, `.rs`, …) | empty file, flip a comparison (`==`↔`!=`, `<`↔`<=`), off-by-one integer constant, flip a boolean — never inside comments or strings |
 | Binary | keep the first half of the bytes, invert 16 bytes in the middle |
 
 Each mutant has a **severity**:
@@ -79,6 +79,33 @@ Each mutant has a **severity**:
 - **weak**: formatting or order changes that a verifier may legitimately ignore.
 
 A surviving mutant is a lead for a human to check, not a verdict.
+
+## Keeping false alarms down
+
+Most of the work in a tool like this is not finding survivors, it is not wasting a reviewer's time on
+survivors that mean nothing. Running it across real Terminal-Bench tasks taught it three rules:
+
+- **Inputs are not answers.** Some tasks export input files as artifacts (so the verifier can read
+  them). A file byte-identical to one shipped in `environment/` is skipped and listed in the report.
+  The file budget for directory artifacts goes only to files the solution actually wrote.
+- **Prose is not code.** Code operators blank every comment, string and docstring before picking a
+  site, so `(mod 26)` in a docstring is never turned into `(mod 27)`.
+- **Dates and IDs are not values.** The number nudge prefers a standalone value (`, 24);`,
+  `<octave>4</octave>`) over a digit inside a date, a timestamp or an ID, and keeps zero padding.
+
+### Tolerance probe
+
+A nudged number that survives is the most common lead, and the slowest to judge: you have to open the
+test to find its tolerance. `--probe` measures it instead. It keeps widening the change until the
+verifier rejects it:
+
+```
+probe /results/TB3_Conf_Answers.csv: accepted +1, rejected +2: the verifier has a tolerance between those two
+probe /app/counts.json: accepted every step up to +1000: this value looks unchecked
+```
+
+The first line is a documented ±1 tolerance and can be closed in seconds. The second is a value
+nobody checks.
 
 ## How it stays faithful to Harbor
 
@@ -90,7 +117,7 @@ A surviving mutant is a lead for a human to check, not a verdict.
 
 - Shared-mode tasks (verifier runs in the agent container) are not supported yet.
 - Tasks that need GPUs, sidecar services or cloud sandboxes are out of scope for a laptop run.
-- Code mutants can be *equivalent* (the change does not alter behaviour). A survivor there needs a human look before anything is reported.
+- Mutants can be *equivalent*: the change does not alter what the verifier is entitled to judge (a tie-break `<` vs `<=`, a duplicated bottom layer that renders the same pixels, a rule that never fires on any input). A survivor needs a human look before anything is reported.
 - Directory artifacts are sampled (`--max-files`). Big code trees are not exhaustively mutated.
 
 ## Related work
