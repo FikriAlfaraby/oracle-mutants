@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
+from typing import Callable
 
 STRONG, MEDIUM, WEAK = "strong", "medium", "weak"
 
@@ -35,6 +36,21 @@ class Variant:
     severity: str
     description: str
     data: bytes
+    # For nudge-number only: the original number, and a function that writes the file with that
+    # number moved by a given step. Used by the tolerance probe.
+    value: str | None = field(default=None, compare=False)
+    rebuild: Callable[[float], bytes] | None = field(default=None, compare=False, repr=False)
+
+
+def shifted(token: str, step: float) -> str:
+    """`token` moved up by `step`: integers by whole units (keeping zero padding), decimals relative to their size."""
+    if re.fullmatch(r"-?\d+", token):
+        bumped = str(int(token) + int(step))
+        return bumped.zfill(len(token)) if token.startswith("0") and len(token) > 1 else bumped
+    value = float(token)
+    new = value * (1 + step) if value != 0 else step
+    decimals = len(token.split(".")[1]) if "." in token and "e" not in token.lower() else 6
+    return f"{new:.{decimals}f}"
 
 
 def kind_of(path: str, data: bytes) -> str:
@@ -126,9 +142,14 @@ def _text_variants(path: str, text: str) -> list[Variant]:
         for i in data_idx:
             m = FIELD_NUMBER.search(lines[i]) or NUMBER.search(lines[i])
             if m:
-                nudged = list(lines)
-                nudged[i] = lines[i][: m.start()] + _nudge(m.group(0)) + lines[i][m.end():]
-                out.append(Variant("nudge-number", MEDIUM, f"line {i + 1}: {m.group(0)} -> {_nudge(m.group(0))}", join(nudged)))
+                def rebuild(step: float, i=i, m=m) -> bytes:
+                    nudged = list(lines)
+                    nudged[i] = lines[i][: m.start()] + shifted(m.group(0), step) + lines[i][m.end():]
+                    return join(nudged)
+
+                out.append(Variant("nudge-number", MEDIUM, f"line {i + 1}: {m.group(0)} -> {_nudge(m.group(0))}",
+                                   join([*lines[:i], lines[i][: m.start()] + _nudge(m.group(0)) + lines[i][m.end():], *lines[i + 1:]]),
+                                   m.group(0), rebuild))
                 break
     if nl == "\n":
         out.append(Variant("crlf-bom", WEAK, "re-encoded with a UTF-8 BOM and CRLF line endings",
@@ -182,7 +203,12 @@ def _json_variants(data: bytes) -> list[Variant]:
         out.append(Variant("numbers-to-zero", STRONG, f"set all {len(leaves)} numeric values to 0", dump(_map_numbers(doc, lambda v: 0))))
         p, v = leaves[0]
         new = v + 1 if isinstance(v, int) else (v * 1.5 if v != 0 else 1.0)
-        out.append(Variant("nudge-number", MEDIUM, f"{_fmt(p)}: {v} -> {new}", dump(_set(doc, p, new))))
+
+        def rebuild_json(step: float, p=p, v=v) -> bytes:
+            moved = v + int(step) if isinstance(v, int) else (v * (1 + step) if v != 0 else step)
+            return dump(_set(doc, p, moved))
+
+        out.append(Variant("nudge-number", MEDIUM, f"{_fmt(p)}: {v} -> {new}", dump(_set(doc, p, new)), json.dumps(v), rebuild_json))
         out.append(Variant("nullify", MEDIUM, f"{_fmt(p)}: {v} -> null", dump(_set(doc, p, None))))
     return out
 

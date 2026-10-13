@@ -46,6 +46,7 @@ class Mutant:
 class Outcome:
     mutant: Mutant
     result: VerifierResult
+    probe: object | None = None  # probe.Probe, filled in by --probe
 
     @property
     def survived(self) -> bool:

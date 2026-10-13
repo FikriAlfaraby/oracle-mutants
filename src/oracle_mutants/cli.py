@@ -10,6 +10,7 @@ from pathlib import Path
 from . import __version__
 from .operators import MEDIUM, STRONG, WEAK
 from .oracle import OracleError, load_oracle_job, run_oracle
+from .probe import probe
 from .report import summarize, write
 from .runner import Report, execute, plan
 from .task import TaskError, load_task
@@ -29,6 +30,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--severity", default="strong,medium,weak", help="comma list of severities to run")
     r.add_argument("--workers", type=int, default=4, help="verifier containers to run in parallel")
     r.add_argument("--dry-run", action="store_true", help="list the mutants without running anything in Docker")
+    r.add_argument("--probe", action="store_true",
+                   help="for each accepted nudged number, widen the change until the verifier rejects it")
     s = sub.add_parser("summarize", help="combine the report.json files under a runs directory into one table")
     s.add_argument("runs", type=Path, help="directory containing <task>/report.json")
     args = p.parse_args(argv)
@@ -80,6 +83,11 @@ def _run(args) -> int:
             print(f"      {mark:9} {o.mutant.variant.severity:6} {o.mutant.variant.operator:18} {o.mutant.container_path}", flush=True)
 
         outcomes = execute(task, oracle, image, mutants, args.workers, progress)
+        if args.probe:
+            for o in outcomes:
+                o.probe = probe(task, oracle, image, o)
+                if o.probe:
+                    print(f"      probe {o.mutant.container_path}: {o.probe.summary()}", flush=True)
         report = Report(task, oracle, baseline, outcomes, skipped)
         js, md = write(report, out)
         survivors = sum(o.survived for o in outcomes)

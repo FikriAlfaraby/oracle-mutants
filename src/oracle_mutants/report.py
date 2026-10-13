@@ -39,6 +39,8 @@ def to_dict(r: Report) -> dict:
                 "timed_out": o.result.timed_out,
                 "survived": o.survived,
                 "diff": o.mutant.diff() if o.survived else None,
+                "probe": ({"steps": [{"step": label, "reward": reward} for label, reward in o.probe.steps],
+                           "summary": o.probe.summary()} if o.probe else None),
             }
             for o in r.outcomes
         ],
@@ -69,8 +71,10 @@ def to_markdown(r: Report) -> str:
         lines += [f"## Accepted {sev} mutants — {VERDICT[sev]}", ""]
         for o in group:
             m = o.mutant
-            lines += [f"### `{m.container_path}` — {m.variant.operator}", "", m.variant.description, "",
-                      "```diff", m.diff(), "```", ""]
+            lines += [f"### `{m.container_path}` — {m.variant.operator}", "", m.variant.description, ""]
+            if o.probe:
+                lines += [f"Tolerance probe: {o.probe.summary()}.", ""]
+            lines += ["```diff", m.diff(), "```", ""]
     if r.skipped:
         shown = r.skipped[:20]
         lines += ["## Skipped", ""] + [f"- {s}" for s in shown]
