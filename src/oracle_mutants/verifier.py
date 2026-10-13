@@ -41,38 +41,63 @@ def build_image(task: Task) -> str:
 def run_verifier(image: str, task: Task, artifacts: list[ExportedArtifact],
                  overrides: dict[str, bytes] | None = None, timeout: float | None = None) -> VerifierResult:
     """overrides maps an absolute container file path to replacement bytes."""
-    overrides = overrides or {}
-    timeout = timeout or task.verifier_timeout
     with tempfile.TemporaryDirectory(prefix="om-") as tmp:
-        tmp = Path(tmp)
-        logs = tmp / "logs"
-        logs.mkdir()
-        logs.chmod(0o777)
-        staged = _stage(tmp / "stage", artifacts, overrides)
-        name = f"om-{uuid.uuid4().hex[:12]}"
-        env_args = [arg for k, v in task.verifier_env.items() for arg in ("-e", f"{k}={v}")]
-        create = subprocess.run(["docker", "create", "--name", name, "-v", f"{logs}:/logs/verifier", *env_args,
-                                 image, "bash", "/tests/test.sh"], capture_output=True, text=True)
-        if create.returncode != 0:
-            raise VerifierError(f"docker create failed: {create.stderr[-2000:]}")
+        logs = Path(tmp) / "logs"
+        timed_out, output, _ = _run(image, task, artifacts, overrides or {}, ["bash", "/tests/test.sh"],
+                                    timeout or task.verifier_timeout, Path(tmp), logs)
+        return VerifierResult(_reward(logs), timed_out, output)
+
+
+@dataclass
+class CommandResult:
+    output_file: bytes | None  # the fetched file, None when the command did not write it
+    timed_out: bool
+    output_tail: str
+
+
+def run_command(image: str, task: Task, artifacts: list[ExportedArtifact], overrides: dict[str, bytes] | None,
+                command: str, fetch: str, timeout: float | None = None) -> CommandResult:
+    """Run `command` in the verifier image with the (possibly mutated) artifacts and return the file at `fetch`.
+    Used to tell an equivalent mutant (same output as the reference) from one the verifier failed to notice."""
+    with tempfile.TemporaryDirectory(prefix="om-") as tmp:
+        timed_out, output, fetched = _run(image, task, artifacts, overrides or {}, ["bash", "-c", command],
+                                          timeout or task.verifier_timeout, Path(tmp), Path(tmp) / "logs", fetch)
+        return CommandResult(fetched, timed_out, output)
+
+
+def _run(image: str, task: Task, artifacts: list[ExportedArtifact], overrides: dict[str, bytes], argv: list[str],
+         timeout: float, tmp: Path, logs: Path, fetch: str | None = None) -> tuple[bool, str, bytes | None]:
+    logs.mkdir()
+    logs.chmod(0o777)
+    staged = _stage(tmp / "stage", artifacts, overrides)
+    name = f"om-{uuid.uuid4().hex[:12]}"
+    env_args = [arg for k, v in task.verifier_env.items() for arg in ("-e", f"{k}={v}")]
+    create = subprocess.run(["docker", "create", "--name", name, "-v", f"{logs}:/logs/verifier", *env_args, image, *argv],
+                            capture_output=True, text=True)
+    if create.returncode != 0:
+        raise VerifierError(f"docker create failed: {create.stderr[-2000:]}")
+    try:
+        for art, host in staged:
+            if art.is_dir:
+                _cp(f"{host}/.", f"{name}:{art.source.rstrip('/')}/")
+            else:
+                _cp(str(host), f"{name}:{art.source}")
+        timed_out = False
         try:
-            for art, host in staged:
-                if art.is_dir:
-                    dest = art.source.rstrip("/") + "/"
-                    _cp(f"{host}/.", f"{name}:{dest}")
-                else:
-                    _cp(str(host), f"{name}:{art.source}")
-            timed_out = False
-            try:
-                run = subprocess.run(["docker", "start", "-a", name], capture_output=True, text=True, timeout=timeout + 30)
-                output = (run.stdout + run.stderr)[-4000:]
-            except subprocess.TimeoutExpired as exc:
-                timed_out = True
-                subprocess.run(["docker", "kill", name], capture_output=True)
-                output = (str(exc.stdout or "") + str(exc.stderr or ""))[-4000:]
-            return VerifierResult(_reward(logs), timed_out, output)
-        finally:
-            subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+            run = subprocess.run(["docker", "start", "-a", name], capture_output=True, text=True, timeout=timeout + 30)
+            output = (run.stdout + run.stderr)[-4000:]
+        except subprocess.TimeoutExpired as exc:
+            timed_out = True
+            subprocess.run(["docker", "kill", name], capture_output=True)
+            output = (str(exc.stdout or "") + str(exc.stderr or ""))[-4000:]
+        fetched = None
+        if fetch:
+            out = tmp / "fetched"
+            if subprocess.run(["docker", "cp", f"{name}:{fetch}", str(out)], capture_output=True).returncode == 0 and out.is_file():
+                fetched = out.read_bytes()
+        return timed_out, output, fetched
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
 def _cp(src: str, dst: str) -> None:
