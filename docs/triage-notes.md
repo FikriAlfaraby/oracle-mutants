@@ -28,7 +28,11 @@ reading the task's instruction and verifier. Categories:
 | telecom-entity-resolution | 3/7 | free field: `cluster_id` is a label; scoring is pairwise co-membership and the instruction does not require unique IDs (zeroed and nulled IDs both pass) |
 | gsea-proteomics | — | reference solution fails on arm64 (x86-only GSEA binary under Rosetta); out of scope on this machine |
 
-Pending: data-anonymization, mp-checkpoint-consolidation, cad-model.
+| mp-checkpoint-consolidation | 0/3 | — |
+| cad-model | — | no ARM build of the CAD library, so neither the solution nor the verifier image builds on this machine |
+
+Totals for the first pass: 15 tasks with results (the 13 rows above with counts, plus mp-checkpoint-consolidation and
+telecom-entity-resolution), 165 mutants, 36 accepted, 0 gaps. data-anonymization moved to the recall set.
 
 ## Tool changes these triages produced
 
@@ -38,4 +42,4 @@ Pending: data-anonymization, mp-checkpoint-consolidation, cad-model.
 4. Nudge standalone values, not digits inside dates or IDs; keep zero padding (production-planning).
 5. Search every line for a standalone value before falling back (satb).
 6. `--probe` to measure tolerances instead of reading the test (roy, fin-saccr-rwa).
-7. TODO after the recall run: treat numeric fields named like identifiers (`cluster_id`) as IDs, not values (telecom).
+7. Treat numeric JSON fields named like identifiers (`id`, `cluster_id`, `userId`) as labels, not values (telecom).
