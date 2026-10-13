@@ -89,3 +89,14 @@ def test_binary_mutants():
 
 def test_empty_file_has_no_empty_mutant():
     assert by_op(mutate("/app/x.txt", b""), "empty") == []
+
+
+def test_nudge_prefers_a_standalone_value_over_dates_and_ids():
+    line = b"INSERT INTO runs(id, created_at, hours) VALUES ('run-00001', '2026-10-13T03:15:22Z', 24);\n"
+    nudged = by_op(mutate("/app/out/w.sql", line), "nudge-number")[0].data
+    assert b", 25);" in nudged and b"'2026-10-13" in nudged and b"run-00001" in nudged
+
+
+def test_nudge_keeps_zero_padding():
+    nudged = by_op(mutate("/app/out/ids.txt", b"00007\n00008\n"), "nudge-number")[0].data
+    assert nudged.startswith(b"00008\n")

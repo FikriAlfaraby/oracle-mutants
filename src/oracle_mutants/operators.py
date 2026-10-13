@@ -25,6 +25,8 @@ CODE_EXT = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".c", ".h", ".c
 JSON_EXT = {".json", ".jsonl", ".geojson"}
 
 NUMBER = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![\w.])")
+# A number that is a value on its own, not a piece of a date, time, path or ID ("2026-10-13", "run-00001").
+FIELD_NUMBER = re.compile(r"(?<![\w.\-:/'\"])-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?![\w.\-:/'\"])")
 
 
 @dataclass(frozen=True)
@@ -120,8 +122,9 @@ def _text_variants(path: str, text: str) -> list[Variant]:
         for i in data_idx:
             zeroed[i] = NUMBER.sub("0", zeroed[i])
         out.append(Variant("numbers-to-zero", STRONG, f"set all {len(body_numbers)} numbers in records to 0", join(zeroed)))
+        # Nudge a standalone value when there is one; the first number on a line is often a date or an ID.
         for i in data_idx:
-            m = NUMBER.search(lines[i])
+            m = FIELD_NUMBER.search(lines[i]) or NUMBER.search(lines[i])
             if m:
                 nudged = list(lines)
                 nudged[i] = lines[i][: m.start()] + _nudge(m.group(0)) + lines[i][m.end():]
@@ -136,7 +139,8 @@ def _text_variants(path: str, text: str) -> list[Variant]:
 def _nudge(token: str) -> str:
     """A clearly wrong but well-formed neighbour of a number: integers +1, decimals x1.5."""
     if re.fullmatch(r"-?\d+", token):
-        return str(int(token) + 1)
+        bumped = str(int(token) + 1)
+        return bumped.zfill(len(token)) if token.startswith("0") and len(token) > 1 else bumped
     value = float(token) * 1.5 if float(token) != 0 else 1.0
     decimals = len(token.split(".")[1]) if "." in token and "e" not in token.lower() else 6
     return f"{value:.{decimals}f}"
