@@ -27,6 +27,39 @@ class Behaviour:
     mutant: Mutant
     verdict: str
     diff: str
+    size: str = ""          # e.g. "12 values changed; largest: legs[0].magnetic_heading_deg 94.1 -> 119.7 (27%)"
+    largest: float = 0.0    # largest relative change among numeric JSON values, for sorting
+
+
+def magnitude(a: bytes, b: bytes) -> tuple[str, float]:
+    """For JSON outputs: how many values changed and the largest relative change. Lets a reviewer put
+    tolerance-sized changes (a rounding digit, 0.1%) below changes nobody could call rounding."""
+    try:
+        ref, new = json.loads(a), json.loads(b)
+    except ValueError:
+        return "", 0.0
+    changes = []
+    _walk_changes(ref, new, "", changes)
+    if not changes:
+        return "", 0.0
+    numeric = [(p, x, y, abs(y - x) / max(abs(x), 1e-9)) for p, x, y in changes
+               if isinstance(x, (int, float)) and isinstance(y, (int, float)) and not isinstance(x, bool)]
+    if numeric:
+        p, x, y, rel = max(numeric, key=lambda c: c[3])
+        return f"{len(changes)} values changed; largest: {p} {x} -> {y} ({rel:.1%})", rel
+    p, x, y = changes[0]
+    return f"{len(changes)} values changed; e.g. {p}: {x!r} -> {y!r}", float("inf")
+
+
+def _walk_changes(x, y, path, out) -> None:
+    if isinstance(x, dict) and isinstance(y, dict):
+        for k in x.keys() | y.keys():
+            _walk_changes(x.get(k), y.get(k), f"{path}.{k}" if path else str(k), out)
+    elif isinstance(x, list) and isinstance(y, list) and len(x) == len(y):
+        for i, (a, b) in enumerate(zip(x, y)):
+            _walk_changes(a, b, f"{path}[{i}]", out)
+    elif x != y:
+        out.append((path, x, y))
 
 
 def accepted_mutants(task: Task, oracle: OracleRun, report_json: Path, max_files: int) -> list[Mutant]:
@@ -56,7 +89,7 @@ def compare(task: Task, oracle: OracleRun, image: str, mutants: list[Mutant], co
         elif _same_json(got, reference.output_file):
             b = Behaviour(m, SAME_DATA, "")
         else:
-            b = Behaviour(m, CHANGED, _diff(reference.output_file, got))
+            b = Behaviour(m, CHANGED, _diff(reference.output_file, got), *magnitude(reference.output_file, got))
         if on_result:
             on_result(b)
         return b
@@ -82,7 +115,7 @@ def _diff(a: bytes, b: bytes, max_lines: int = 40) -> str:
 
 
 def to_markdown(task: Task, command: str, fetch: str, results: list[Behaviour]) -> str:
-    changed = [b for b in results if b.verdict == CHANGED]
+    changed = sorted((b for b in results if b.verdict == CHANGED), key=lambda b: -b.largest)
     lines = [f"# Behaviour check: {task.name}", "",
              f"Command `{command}`, output `{fetch}`, run in the verifier image for the reference and for every accepted mutant.",
              "",
@@ -92,7 +125,8 @@ def to_markdown(task: Task, command: str, fetch: str, results: list[Behaviour]) 
              f"- Program wrote no output: **{sum(b.verdict == NO_OUTPUT for b in results)}**", ""]
     for b in results:
         m = b.mutant
-        lines.append(f"- {b.verdict}: `{m.container_path}` {m.variant.operator}, {m.variant.description}")
+        lines.append(f"- {b.verdict}: `{m.container_path}` {m.variant.operator}, {m.variant.description}"
+                     + (f" — {b.size}" if b.size else ""))
     for b in changed:
         lines += ["", f"## `{b.mutant.container_path}` — {b.mutant.variant.description}", "",
                   "```diff", b.mutant.diff(), "```", "", "What the program now writes:", "", "```diff", b.diff, "```"]

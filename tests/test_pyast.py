@@ -55,3 +55,9 @@ def test_offsets_survive_non_ascii_lines():
 
 def test_unparseable_source_gives_no_sites():
     assert sites("def broken(:\n") == []
+
+
+def test_formatting_arguments_are_not_values():
+    src = "import json\nx = round(v * 3, 1)\njson.dump(d, f, indent=2)\ny = round(w, ndigits=2)\n"
+    consts = {s.description for s in sites(src) if s.operator == "off-by-one-constant"}
+    assert consts == {"line 2: 3 -> 4"}

@@ -49,6 +49,8 @@ class Outcome:
     probe: object | None = None  # probe.Probe, filled in by --probe
     behaviour: str | None = None  # compare verdict, filled in by --compare
     behaviour_diff: str = ""
+    behaviour_size: str = ""
+    behaviour_largest: float = 0.0
 
     @property
     def survived(self) -> bool:

@@ -49,6 +49,12 @@ def sites(src: str) -> list[Site]:
     def pos(node) -> tuple[int, int]:
         return at(node.lineno, node.col_offset), at(node.end_lineno, node.end_col_offset)
 
+    # Formatting knobs, not values: round(x, 1) -> round(x, 2) or json.dump(..., indent=2) -> 3 only
+    # change how a result is printed.
+    formatting = {id(n.args[1]) for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "round" and len(n.args) > 1}
+    formatting |= {id(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call)
+                   for k in n.keywords if k.arg in {"ndigits", "indent"}}
     docstrings = {id(n.body[0].value) for n in ast.walk(tree)
                   if isinstance(n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
                   and n.body and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
@@ -77,7 +83,7 @@ def sites(src: str) -> list[Site]:
             if sym in gap:
                 out.append(Site("swap-arithmetic", node.lineno, f"line {node.lineno}: '{sym}' -> '{alt}'",
                                 left_end, right_start, gap.replace(sym, alt, 1)))
-        elif isinstance(node, ast.Constant) and id(node) not in docstrings:
+        elif isinstance(node, ast.Constant) and id(node) not in docstrings and id(node) not in formatting:
             a, b = pos(node)
             if isinstance(node.value, bool):
                 flipped = str(not node.value)

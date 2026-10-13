@@ -41,6 +41,7 @@ def to_dict(r: Report) -> dict:
                 "diff": o.mutant.diff() if o.survived else None,
                 "behaviour": o.behaviour,
                 "behaviour_diff": o.behaviour_diff or None,
+                "behaviour_size": o.behaviour_size or None,
                 "probe": ({"steps": [{"step": label, "reward": reward} for label, reward in o.probe.steps],
                            "summary": o.probe.summary()} if o.probe else None),
             }
@@ -67,15 +68,18 @@ def to_markdown(r: Report) -> str:
     if not survivors:
         lines.append("The verifier rejected every mutant. No gaps found by these operators.")
     checked = [o for o in survivors if o.behaviour]
-    missed = [o for o in checked if o.behaviour == "output changed"]
+    missed = sorted((o for o in checked if o.behaviour == "output changed"), key=lambda o: -o.behaviour_largest)
     if checked:
         lines += [f"Behaviour check: {len(missed)} of {len(checked)} accepted mutants change the program's output. "
                   "The rest write exactly the reference output (or the same JSON data), so there was nothing to catch.", ""]
     if missed:
-        lines += ["## Output changed, verifier still gave full reward — likely gaps", ""]
+        lines += ["## Output changed, verifier still gave full reward — likely gaps", "",
+                  "Largest change first. A change of a fraction of a percent is usually inside a tolerance; "
+                  "tens of percent is not.", ""]
         for o in missed:
             m = o.mutant
             lines += [f"### `{m.container_path}` — {m.variant.operator}", "", m.variant.description, "",
+                      *([f"Output change: {o.behaviour_size}.", ""] if o.behaviour_size else []),
                       "```diff", m.diff(), "```", "", "What the program now writes:", "", "```diff", o.behaviour_diff, "```", ""]
     if checked:
         same = [o for o in checked if o.behaviour != "output changed"]

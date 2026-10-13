@@ -134,7 +134,9 @@ def _run(args) -> int:
                                     workers=args.workers)
             for o, b in zip(accepted, behaviours):
                 o.behaviour, o.behaviour_diff = b.verdict, b.diff
-                print(f"      {b.verdict:15} {o.mutant.container_path}  {o.mutant.variant.description}", flush=True)
+                o.behaviour_size, o.behaviour_largest = b.size, b.largest
+                print(f"      {b.verdict:15} {o.mutant.container_path}  {o.mutant.variant.description}"
+                      + (f"  [{b.size}]" if b.size else ""), flush=True)
         report = Report(task, oracle, baseline, outcomes, skipped)
         js, md = write(report, out)
         survivors = sum(o.survived for o in outcomes)
