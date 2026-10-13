@@ -29,6 +29,9 @@ class OracleError(Exception):
 
 
 def run_oracle(task: Task, jobs_dir: Path, harbor: str = "harbor") -> OracleRun:
+    # Harbor resolves a relative jobs dir against the compose project directory when it copies
+    # directory artifacts out, so always hand it an absolute path.
+    jobs_dir = jobs_dir.resolve()
     jobs_dir.mkdir(parents=True, exist_ok=True)
     before = set(jobs_dir.iterdir())
     proc = subprocess.run([harbor, "run", "-p", str(task.root), "-a", "oracle", "-o", str(jobs_dir)],
