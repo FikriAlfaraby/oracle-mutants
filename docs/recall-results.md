@@ -41,7 +41,7 @@ tool finds", not an unbiased recall score.
 | data-anonymization | noise distribution unchecked | missed | not run: ~8 min per grading × 215 mutants |
 | others (7) | trust boundaries, determinism, new files | out of reach | out of reach |
 
-Final runs: cargo-flight-dispatch 169 mutants, 59 accepted, 13 change the flight plan.
+Final runs: cargo-flight-dispatch 169 mutants, 59 accepted, 13 change the output: 10 change the flight plan's legs and 3 only a summary total, by 0.2% or less ([report](../results/final/cargo-flight-dispatch.json)).
 embedding-drift-monitor 186 mutants, 82 accepted, 30 change the CLI output. Also flagged: the PSI value
 can be off by ~10^6 and pass, but the threshold is calibrated with the same function so alerts are
 unchanged; judged too minor to report.

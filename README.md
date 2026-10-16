@@ -29,7 +29,7 @@ $ oracle-mutants run examples/word-count-weak
       ACCEPTED  strong numbers-to-zero    /app/counts.json
       ACCEPTED  medium drop-key           /app/counts.json
       ...
-8 of 10 mutants accepted (3s). Report: runs/word-count-weak/report.md
+8 of 10 mutants accepted (3s). Report: results/examples/word-count-weak.md
 ```
 
 The report shows each accepted mutant as a diff. In this case, setting every count to zero still earns full reward:
@@ -50,16 +50,25 @@ A strong verifier rejects all of them. On Terminal-Bench's `foodstuff-beta-activ
 
 ## Results on Terminal-Bench (October 2026)
 
+Every number here comes from a run report committed in [`results/`](results/) (machine paths removed by
+`scripts/export_results.py`), and `tests/test_results.py` recomputes each one from those files.
+
 - **A new verifier gap, reported upstream.** In `session-window-debug`, a merger that gives a merged
-  session the wrong end time scores 1.0 in Harbor (7/7 tests). Reported with a reproduction and a
+  session the wrong end time scores 1.0 in Harbor (7/7 tests): two `min`/`max` swaps in `merger.py`
+  are accepted ([report](results/final/session-window-debug.json)). Reported with a reproduction and a
   fix: [terminal-bench#2243](https://github.com/harbor-framework/terminal-bench/issues/2243).
-- **Precision.** First pass: 15 tasks, 165 mutants, 36 accepted. Every accepted mutant was triaged by
-  reading the verifier; none was a gap. Each false-alarm category became a rule in the tool
-  ([triage notes](docs/triage-notes.md)).
+- **Precision.** First pass: 15 tasks, 165 mutants, 36 accepted ([reports](results/first-pass/); one
+  task's run stopped before writing its report, and its log holds every verdict). Every accepted mutant
+  was triaged by reading the verifier; none was a gap. Each false-alarm category became a rule in the
+  tool ([triage notes](docs/triage-notes.md)).
+- **On cargo-flight-dispatch**, the final run: 169 mutants, 59 accepted, 13 change the output: 10 change
+  the flight plan's legs and 3 only a summary total, by 0.2% or less
+  ([report](results/final/cargo-flight-dispatch.json)).
 - **Recall against a published manual audit**
   ([terminal-bench#2150](https://github.com/harbor-framework/terminal-bench/issues/2150)), with
   predictions committed before the run ([pre-registration](docs/recall-preregistration.md)). The
-  blind run found none of the seven findings in reach. The improved version re-finds five published
+  blind run found none of the seven findings in reach ([reports](results/recall-blind/)). The improved
+  version, whose operators were chosen after reading the findings' titles, re-finds five published
   findings: four of the seven predicted in reach, plus one predicted out of reach
   ([results](docs/recall-results.md)). Full
   write-up: [Do benchmark verifiers reject wrong answers?](https://fikrialfaraby.com/notes/verifier-mutants/)
